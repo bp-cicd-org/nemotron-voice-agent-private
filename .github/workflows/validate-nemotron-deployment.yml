@@ -1,0 +1,141 @@
+# SPDX-FileCopyrightText: Copyright (c) 2024–2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: BSD-2-Clause
+
+# This repository ships Docker-based deployment only (no Jupyter notebooks in-tree).
+name: Validate Nemotron Voice Agent deployment
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-deployment:
+    runs-on: arc-runner-set-oke-org-poc-4-gpu
+    timeout-minutes: 480
+    env:
+      NVIDIA_API_KEY: ${{ secrets.NGC_API_KEY }}
+      NGC_API_KEY: ${{ secrets.NGC_API_KEY }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          submodules: recursive
+
+      - name: Check Container Status
+        run: |
+          echo "===================== Container Status ====================="
+          docker ps -a
+
+      - name: Prepare .env and NGC login
+        run: |
+          set -euo pipefail
+          cp config/env.example .env
+          python3 <<'PY'
+          import os
+          from pathlib import Path
+          key = os.environ.get("NVIDIA_API_KEY", "")
+          if not key:
+              raise SystemExit("Repository secret NGC_API_KEY is empty or missing")
+          p = Path(".env")
+          lines = []
+          for line in p.read_text().splitlines():
+              if line.startswith("NVIDIA_API_KEY="):
+                  lines.append(f"NVIDIA_API_KEY={key}")
+              else:
+                  lines.append(line)
+          p.write_text("\n".join(lines) + "\n")
+          PY
+          echo "${NGC_API_KEY}" | docker login nvcr.io --username '$oauthtoken' --password-stdin
+
+      - name: Deploy stack and validate health
+        run: |
+          set -euo pipefail
+
+          echo "Starting Nemotron Voice Agent stack (first pull / TRT build can take a long time)..."
+          docker compose -f docker-compose.yml up -d --build
+
+          echo "Waiting for UI (host port 9000)..."
+          max_retries=120
+          retry_count=0
+          until curl -fsS "http://127.0.0.1:9000/" > /dev/null 2>&1; do
+            retry_count=$((retry_count + 1))
+            if [ "$retry_count" -ge "$max_retries" ]; then
+              echo "❌ UI did not become ready after $max_retries attempts (~$((max_retries * 10 / 60)) minutes)"
+              docker compose -f docker-compose.yml ps
+              exit 1
+            fi
+            echo "Waiting for UI... attempt $retry_count/$max_retries"
+            sleep 10
+          done
+          echo "✅ UI is responding on http://127.0.0.1:9000"
+
+          echo "Waiting for python-app OpenAPI docs (host port 7860)..."
+          retry_count=0
+          until curl -fsS "http://127.0.0.1:7860/docs" > /dev/null 2>&1; do
+            retry_count=$((retry_count + 1))
+            if [ "$retry_count" -ge 60 ]; then
+              echo "❌ python-app /docs did not become ready in time"
+              docker compose -f docker-compose.yml ps
+              exit 1
+            fi
+            echo "Waiting for /docs... attempt $retry_count/60"
+            sleep 10
+          done
+          echo "✅ python-app is healthy (OpenAPI docs reachable)"
+
+      - name: Cleanup Docker resources
+        if: always()
+        run: |
+          echo "🧹 Cleaning up workflow resources..."
+          docker compose -f docker-compose.yml down --rmi all 2>/dev/null || true
+          docker compose -f docker-compose.jetson.yml down --rmi all 2>/dev/null || true
+          echo "✅ Docker Compose services stopped"
+
+          sleep 30
+
+          echo "Remaining containers:"
+          docker ps -a
+
+          echo "Removing dangling images..."
+          docker image prune -f
+
+          echo "Remaining images:"
+          docker images
+
+          echo "✅ Workflow cleanup completed"
+
+      - name: Set result output
+        id: set_result
+        if: always()
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then
+            echo "RESULT=PASS" >> "$GITHUB_OUTPUT"
+          else
+            echo "RESULT=FAIL" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Send mail
+        uses: dawidd6/action-send-mail@6e71c855c9a091d80a519621b9fd3e8d252ca40c
+        if: always() && secrets.SMTP_USERNAME != '' && secrets.SMTP_PASSWORD != '' && secrets.SMTP_MAIL_TO != '' && secrets.SMTP_MAIL_FROM != ''
+        with:
+          server_address: smtp.gmail.com
+          server_port: 587
+          username: ${{ secrets.SMTP_USERNAME }}
+          password: ${{ secrets.SMTP_PASSWORD }}
+          subject: "CI workflow result for ${{ github.repository }}"
+          to: ${{ secrets.SMTP_MAIL_TO }}
+          from: ${{ secrets.SMTP_MAIL_FROM }}
+          html_body: |
+            <p>Hello,</p>
+
+            <p>The workflow for repository: <strong>${{ github.repository }}</strong> has completed.<br>
+            <strong>Result:</strong> ${{ steps.set_result.outputs.RESULT }}</p>
+
+            <p>Run details:<br>
+            <a href="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}">${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}</a></p>
