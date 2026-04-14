@@ -120,9 +120,25 @@ jobs:
             echo "RESULT=FAIL" >> "$GITHUB_OUTPUT"
           fi
 
+      # secrets cannot be referenced in step `if:` for some validators / policies; gate via env in bash.
+      - name: Detect SMTP configuration
+        id: smtp_notify
+        if: always()
+        env:
+          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          SMTP_MAIL_TO: ${{ secrets.SMTP_MAIL_TO }}
+          SMTP_MAIL_FROM: ${{ secrets.SMTP_MAIL_FROM }}
+        run: |
+          if [ -n "$SMTP_USERNAME" ] && [ -n "$SMTP_PASSWORD" ] && [ -n "$SMTP_MAIL_TO" ] && [ -n "$SMTP_MAIL_FROM" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Send mail
         uses: dawidd6/action-send-mail@6e71c855c9a091d80a519621b9fd3e8d252ca40c
-        if: always() && secrets.SMTP_USERNAME != '' && secrets.SMTP_PASSWORD != '' && secrets.SMTP_MAIL_TO != '' && secrets.SMTP_MAIL_FROM != ''
+        if: ${{ always() && steps.smtp_notify.outputs.enabled == 'true' }}
         with:
           server_address: smtp.gmail.com
           server_port: 587
