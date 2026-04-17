@@ -58,7 +58,19 @@ jobs:
           set -euo pipefail
 
           echo "Starting Nemotron Voice Agent stack (first pull / TRT build can take a long time)..."
-          docker compose -f docker-compose.yml up -d --build
+          # Retry compose build/up without changing Dockerfiles (helps transient apt mirror/network during image build).
+          for attempt in 1 2 3 4 5; do
+            if docker compose -f docker-compose.yml up -d --build; then
+              break
+            fi
+            if [ "$attempt" -eq 5 ]; then
+              echo "docker compose up --build failed after 5 attempts"
+              exit 1
+            fi
+            echo "docker compose failed (attempt ${attempt}), cleaning partial run and retrying..."
+            docker compose -f docker-compose.yml down 2>/dev/null || true
+            sleep $((attempt * 15))
+          done
 
           echo "Waiting for UI (host port 9000)..."
           max_retries=120
