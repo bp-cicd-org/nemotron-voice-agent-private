@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   validate-deployment:
-    runs-on: arc-runner-set-oke-org-poc-4-gpu
+    runs-on: arc-runner-set-oke-org-poc-2-gpu
     timeout-minutes: 480
     env:
       NVIDIA_API_KEY: ${{ secrets.NGC_API_KEY }}
