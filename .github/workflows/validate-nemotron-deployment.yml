@@ -103,17 +103,23 @@ jobs:
 
       - name: Run Nemotron UI automation tests
         env:
-          GITLAB_QA_TOKEN: ${{ secrets.GITLAB_QA_TOKEN }}
+          # Optional: set if https://github.com/bp-cicd-org/blueprint-github-test is private (PAT with repo read).
+          BLUEPRINT_GITHUB_TEST_TOKEN: ${{ secrets.BLUEPRINT_GITHUB_TEST_TOKEN }}
+          # Branch to test (must exist on GitHub).
+          QA_TEST_BRANCH: khang-dry-run
         run: |
           set -euo pipefail
 
-          if [ -z "${GITLAB_QA_TOKEN:-}" ]; then
-            echo "Repository secret GITLAB_QA_TOKEN is required to clone GitLab test repo."
-            exit 1
+          echo "Cloning QA test repository (branch: ${QA_TEST_BRANCH})..."
+          if [ -n "${BLUEPRINT_GITHUB_TEST_TOKEN:-}" ]; then
+            git clone --depth 1 -b "${QA_TEST_BRANCH}" \
+              "https://x-access-token:${BLUEPRINT_GITHUB_TEST_TOKEN}@github.com/bp-cicd-org/blueprint-github-test.git" \
+              qa-tests
+          else
+            git clone --depth 1 -b "${QA_TEST_BRANCH}" \
+              "https://github.com/bp-cicd-org/blueprint-github-test.git" \
+              qa-tests
           fi
-
-          echo "Cloning QA test repository..."
-          git clone --depth 1 --branch khang-dry-run "https://oauth2:${GITLAB_QA_TOKEN}@gitlab-master.nvidia.com/cloud-service-qa/Blueprint/blueprint-github-test.git" qa-tests
 
           echo "Installing pytest dependencies..."
           python3 -m pip install --upgrade pip
