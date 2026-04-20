@@ -101,24 +101,29 @@ jobs:
           done
           echo "python-app is healthy (OpenAPI docs reachable)"
 
-      # Cross-org checkout: GITHUB_TOKEN from this repo cannot read bp-cicd-org/blueprint-github-test → 403 without a PAT.
-      - name: Require PAT for QA test repository
+      # Cross-org: use REST tarball instead of git fetch — same PAT, but avoids HTTPS git "Write access not granted" / 403 on some orgs.
+      - name: Download QA automation tests (GitHub tarball)
         env:
           PAT: ${{ secrets.BLUEPRINT_GITHUB_TEST }}
         run: |
+          set -euo pipefail
           if [ -z "${PAT}" ]; then
-            echo "::error title=Missing secret::Add repository secret BLUEPRINT_GITHUB_TEST: a GitHub PAT (classic: repo scope, or fine-grained: Contents read) on bp-cicd-org/blueprint-github-test. If the org uses SSO, authorize the PAT for that org. Do not rely on GITHUB_TOKEN here."
+            echo "::error title=Missing secret::Add repository secret BLUEPRINT_GITHUB_TEST (PAT with Contents: Read on blueprint-github-test; SSO authorize if required)."
             exit 1
           fi
-
-      - name: Checkout QA automation tests
-        uses: actions/checkout@v4
-        with:
-          repository: bp-cicd-org/blueprint-github-test
-          ref: khang-dry-run
-          path: qa-tests
-          fetch-depth: 1
-          token: ${{ secrets.BLUEPRINT_GITHUB_TEST }}
+          rm -rf qa-tests
+          mkdir -p qa-tests
+          curl -fsSL \
+            -H "Authorization: Bearer ${PAT}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            -L \
+            "https://api.github.com/repos/bp-cicd-org/blueprint-github-test/tarball/khang-dry-run" \
+            -o /tmp/blueprint-github-test.tar.gz
+          tar -xzf /tmp/blueprint-github-test.tar.gz -C qa-tests --strip-components=1
+          rm -f /tmp/blueprint-github-test.tar.gz
+          echo "Extracted QA repo to qa-tests/"
+          ls -la qa-tests | head -30
 
       - name: Run Nemotron UI automation tests
         run: |
