@@ -104,10 +104,10 @@ jobs:
       # Cross-org checkout: GITHUB_TOKEN from this repo cannot read bp-cicd-org/blueprint-github-test → 403 without a PAT.
       - name: Require PAT for QA test repository
         env:
-          PAT: ${{ secrets.BLUEPRINT_GITHUB_TEST_TOKEN }}
+          PAT: ${{ secrets.BLUEPRINT_GITHUB_TEST }}
         run: |
           if [ -z "${PAT}" ]; then
-            echo "::error title=Missing secret::Add repository secret BLUEPRINT_GITHUB_TEST_TOKEN: a GitHub PAT (classic: repo scope, or fine-grained: Contents read) on bp-cicd-org/blueprint-github-test. If the org uses SSO, authorize the PAT for that org. Do not rely on GITHUB_TOKEN here."
+            echo "::error title=Missing secret::Add repository secret BLUEPRINT_GITHUB_TEST: a GitHub PAT (classic: repo scope, or fine-grained: Contents read) on bp-cicd-org/blueprint-github-test. If the org uses SSO, authorize the PAT for that org. Do not rely on GITHUB_TOKEN here."
             exit 1
           fi
 
@@ -118,7 +118,7 @@ jobs:
           ref: khang-dry-run
           path: qa-tests
           fetch-depth: 1
-          token: ${{ secrets.BLUEPRINT_GITHUB_TEST_TOKEN }}
+          token: ${{ secrets.BLUEPRINT_GITHUB_TEST }}
 
       - name: Run Nemotron UI automation tests
         run: |
