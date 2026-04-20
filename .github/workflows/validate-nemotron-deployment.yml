@@ -101,8 +101,16 @@ jobs:
           done
           echo "python-app is healthy (OpenAPI docs reachable)"
 
-      # Use actions/checkout (not raw git clone) so CI never prompts for HTTPS username/password.
-      # Private repo: set secret BLUEPRINT_GITHUB_TEST_TOKEN (PAT with repo contents: read on blueprint-github-test).
+      # Cross-org checkout: GITHUB_TOKEN from this repo cannot read bp-cicd-org/blueprint-github-test → 403 without a PAT.
+      - name: Require PAT for QA test repository
+        env:
+          PAT: ${{ secrets.BLUEPRINT_GITHUB_TEST_TOKEN }}
+        run: |
+          if [ -z "${PAT}" ]; then
+            echo "::error title=Missing secret::Add repository secret BLUEPRINT_GITHUB_TEST_TOKEN: a GitHub PAT (classic: repo scope, or fine-grained: Contents read) on bp-cicd-org/blueprint-github-test. If the org uses SSO, authorize the PAT for that org. Do not rely on GITHUB_TOKEN here."
+            exit 1
+          fi
+
       - name: Checkout QA automation tests
         uses: actions/checkout@v4
         with:
@@ -110,7 +118,7 @@ jobs:
           ref: khang-dry-run
           path: qa-tests
           fetch-depth: 1
-          token: ${{ secrets.BLUEPRINT_GITHUB_TEST_TOKEN != '' && secrets.BLUEPRINT_GITHUB_TEST_TOKEN || github.token }}
+          token: ${{ secrets.BLUEPRINT_GITHUB_TEST_TOKEN }}
 
       - name: Run Nemotron UI automation tests
         run: |
