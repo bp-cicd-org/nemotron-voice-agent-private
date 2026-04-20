@@ -101,25 +101,20 @@ jobs:
           done
           echo "python-app is healthy (OpenAPI docs reachable)"
 
+      # Use actions/checkout (not raw git clone) so CI never prompts for HTTPS username/password.
+      # Private repo: set secret BLUEPRINT_GITHUB_TEST_TOKEN (PAT with repo contents: read on blueprint-github-test).
+      - name: Checkout QA automation tests
+        uses: actions/checkout@v4
+        with:
+          repository: bp-cicd-org/blueprint-github-test
+          ref: khang-dry-run
+          path: qa-tests
+          fetch-depth: 1
+          token: ${{ secrets.BLUEPRINT_GITHUB_TEST_TOKEN != '' && secrets.BLUEPRINT_GITHUB_TEST_TOKEN || github.token }}
+
       - name: Run Nemotron UI automation tests
-        env:
-          # Optional: set if https://github.com/bp-cicd-org/blueprint-github-test is private (PAT with repo read).
-          BLUEPRINT_GITHUB_TEST_TOKEN: ${{ secrets.BLUEPRINT_GITHUB_TEST_TOKEN }}
-          # Branch to test (must exist on GitHub).
-          QA_TEST_BRANCH: khang-dry-run
         run: |
           set -euo pipefail
-
-          echo "Cloning QA test repository (branch: ${QA_TEST_BRANCH})..."
-          if [ -n "${BLUEPRINT_GITHUB_TEST_TOKEN:-}" ]; then
-            git clone --depth 1 -b "${QA_TEST_BRANCH}" \
-              "https://x-access-token:${BLUEPRINT_GITHUB_TEST_TOKEN}@github.com/bp-cicd-org/blueprint-github-test.git" \
-              qa-tests
-          else
-            git clone --depth 1 -b "${QA_TEST_BRANCH}" \
-              "https://github.com/bp-cicd-org/blueprint-github-test.git" \
-              qa-tests
-          fi
 
           echo "Installing pytest dependencies..."
           python3 -m pip install --upgrade pip
